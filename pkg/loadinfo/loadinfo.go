@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/process"
 	"github.com/sirupsen/logrus"
 
@@ -32,8 +31,8 @@ var log = logging.DefaultLogger.WithField(logfields.LogSubsys, "loadinfo")
 // LogFunc is the function to used to log the system load
 type LogFunc func(format string, args ...interface{})
 
-func toMB(total uint64) uint64 {
-	return total / 1024 / 1024
+func toMB(total int) int {
+	return total / 1024
 }
 
 // LogCurrentSystemLoad logs the current system load and lists all processes
@@ -45,16 +44,12 @@ func LogCurrentSystemLoad(logFunc LogFunc) {
 			loadInfo.Load1, loadInfo.Load5, loadInfo.Load15)
 	}
 
-	memInfo, err := mem.VirtualMemory()
-	if err == nil && memInfo != nil {
+	memoryInfo, err := psutil.MemoryInfo()
+	if err == nil && memoryInfo != nil {
 		logFunc("Memory: Total: %d Used: %d (%.2f%%) Free: %d Buffers: %d Cached: %d",
-			toMB(memInfo.Total), toMB(memInfo.Used), memInfo.UsedPercent, toMB(memInfo.Free), toMB(memInfo.Buffers), toMB(memInfo.Cached))
-	}
-
-	swapInfo, err := mem.SwapMemory()
-	if err == nil && swapInfo != nil {
+			toMB(memoryInfo.Virtual.Total), toMB(memoryInfo.Virtual.Used), memoryInfo.Virtual.UsedPercent, toMB(memoryInfo.Virtual.Free), toMB(memoryInfo.Buffers), toMB(memoryInfo.Cached))
 		logFunc("Swap: Total: %d Used: %d (%.2f%%) Free: %d",
-			toMB(swapInfo.Total), toMB(swapInfo.Used), swapInfo.UsedPercent, toMB(swapInfo.Free))
+			toMB(memoryInfo.Swap.Total), toMB(memoryInfo.Swap.Used), memoryInfo.Swap.UsedPercent, toMB(memoryInfo.Swap.Free))
 	}
 
 	procs, err := process.Processes()

@@ -11,10 +11,10 @@ import (
 	"sort"
 
 	"github.com/cilium/workerpool"
-	"github.com/shirou/gopsutil/v3/mem"
 
 	"github.com/cilium/cilium/pkg/loadbalancer"
 	"github.com/cilium/cilium/pkg/murmur3"
+	"github.com/cilium/cilium/pkg/psutil"
 )
 
 const (
@@ -202,8 +202,8 @@ func GetLookupTable(backendsMap map[string]*loadbalancer.Backend, m uint64) []in
 // uint64 elements in the slice that equal to the total MB (length). To get the
 // MB, multiply by sizeof(uint64).
 func derivePermutationSliceLen(m uint64) uint64 {
-	threshold := uint64(8 * 1024 * 1024 * 1024) // 8GB
-	if vm, err := mem.VirtualMemory(); err != nil || vm == nil || vm.Total <= threshold {
+	threshold := 8 * 1024 * 1024 // 8GB
+	if vm, err := psutil.MemoryInfo(); err != nil || vm == nil || vm.Virtual.Total <= threshold {
 		return 0
 	}
 

@@ -8,3 +8,17 @@ type LoadAvg struct {
 	Load5  float64
 	Load15 float64
 }
+
+type MemoryStat struct {
+	Total       int
+	Free        int
+	Used        int
+	UsedPercent float32
+}
+
+type Memory struct {
+	Virtual MemoryStat
+	Swap    MemoryStat
+	Buffers int
+	Cached  int
+}
