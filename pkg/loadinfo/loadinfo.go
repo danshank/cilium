@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/shirou/gopsutil/v3/load"
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/process"
 	"github.com/sirupsen/logrus"
@@ -16,6 +15,7 @@ import (
 	"github.com/cilium/cilium/pkg/inctimer"
 	"github.com/cilium/cilium/pkg/logging"
 	"github.com/cilium/cilium/pkg/logging/logfields"
+	"github.com/cilium/cilium/pkg/psutil"
 )
 
 const (
@@ -39,7 +39,7 @@ func toMB(total uint64) uint64 {
 // LogCurrentSystemLoad logs the current system load and lists all processes
 // consuming more than cpuWatermark of the CPU
 func LogCurrentSystemLoad(logFunc LogFunc) {
-	loadInfo, err := load.Avg()
+	loadInfo, err := psutil.Load()
 	if err == nil {
 		logFunc("Load 1-min: %.2f 5-min: %.2f 15min: %.2f",
 			loadInfo.Load1, loadInfo.Load5, loadInfo.Load15)
