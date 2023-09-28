@@ -22,3 +22,18 @@ type Memory struct {
 	Buffers int
 	Cached  int
 }
+
+type Process struct {
+	Name          string
+	Pid           int
+	Status        string
+	MemoryPercent float32
+	CpuPercent    float32
+	Command       string
+	RSS           int
+	VMS           int
+	Data          int
+	Stack         int
+	Locked        int
+	Swap          int
+}

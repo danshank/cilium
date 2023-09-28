@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/shirou/gopsutil/v3/process"
 	"github.com/sirupsen/logrus"
 
 	"github.com/cilium/cilium/pkg/inctimer"
@@ -52,26 +51,15 @@ func LogCurrentSystemLoad(logFunc LogFunc) {
 			toMB(memoryInfo.Swap.Total), toMB(memoryInfo.Swap.Used), memoryInfo.Swap.UsedPercent, toMB(memoryInfo.Swap.Free))
 	}
 
-	procs, err := process.Processes()
+	procs, err := psutil.ProcessesAboveWatermark(cpuWatermark)
 	if err == nil {
 		for _, p := range procs {
-			cpuPercent, _ := p.CPUPercent()
-			if cpuPercent > cpuWatermark {
-				name, _ := p.Name()
-				status, _ := p.Status()
-				memPercent, _ := p.MemoryPercent()
-				cmdline, _ := p.Cmdline()
+			memExt := fmt.Sprintf("RSS: %d VMS: %d Data: %d Stack: %d Locked: %d Swap: %d",
+				toMB(p.RSS), toMB(p.VMS), toMB(p.Data),
+				toMB(p.Stack), toMB(p.Locked), toMB(p.Swap))
 
-				memExt := ""
-				if memInfo, err := p.MemoryInfo(); memInfo != nil && err == nil {
-					memExt = fmt.Sprintf("RSS: %d VMS: %d Data: %d Stack: %d Locked: %d Swap: %d",
-						toMB(memInfo.RSS), toMB(memInfo.VMS), toMB(memInfo.Data),
-						toMB(memInfo.Stack), toMB(memInfo.Locked), toMB(memInfo.Swap))
-				}
-
-				logFunc("NAME %s STATUS %s PID %d CPU: %.2f%% MEM: %.2f%% CMDLINE: %s MEM-EXT: %s",
-					name, status, p.Pid, cpuPercent, memPercent, cmdline, memExt)
-			}
+			logFunc("NAME %s STATUS %s PID %d CPU: %.2f%% MEM: %.2f%% CMDLINE: %s MEM-EXT: %s",
+				p.Name, p.Status, p.Pid, p.CpuPercent, p.MemoryPercent, p.Command, memExt)
 		}
 	}
 }
