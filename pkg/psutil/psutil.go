@@ -5,6 +5,7 @@ package psutil
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"os"
 	"strconv"
@@ -16,7 +17,11 @@ var clkTck = uint64(100)
 
 // Reads the average load statistics from /proc/loadavg
 func Load() (*LoadAvg, error) {
-	f, err := os.ReadFile("/proc/loadavg")
+	return loadFromFile("/proc/loadavg")
+}
+
+func loadFromFile(filename string) (*LoadAvg, error) {
+	f, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -47,26 +52,34 @@ func calculateMemory(total int, free int) *MemoryStat {
 	return &MemoryStat{Total: total, Free: free, Used: used, UsedPercent: usedPct}
 }
 
-func fieldSplit(c rune) bool {
+func memInfoFieldFieldSplit(c rune) bool {
 	return !unicode.IsLetter(c) && !unicode.IsNumber(c)
 }
 
+func statusFileFieldSplit(c rune) bool {
+	return unicode.IsSpace(c)
+}
+
 func MemoryInfo() (*Memory, error) {
-	f, err := os.Open("/proc/meminfo")
+	return memoryInfoFromFile("/proc/meminfo")
+}
+
+func memoryInfoFromFile(filename string) (*Memory, error) {
+	f, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
 
 	defer f.Close()
 
-	var totalVir, freeVir, totalSwp, freeSwp, buffers, cached int
+	var totalVir, freeVir, totalSwp, freeSwp, buffers, cached, sReclaimable int
 
 	lines := bufio.NewScanner(f)
 	lines.Split(bufio.ScanLines)
 	for lines.Scan() {
 		line := lines.Text()
 
-		fields := strings.FieldsFunc(line, fieldSplit)
+		fields := strings.FieldsFunc(line, memInfoFieldFieldSplit)
 
 		switch fields[0] {
 		case "MemTotal":
@@ -104,18 +117,30 @@ func MemoryInfo() (*Memory, error) {
 			if err != nil {
 				return nil, err
 			}
+
+		case "SReclaimable":
+			sReclaimable, err = strconv.Atoi(fields[1])
+			if err != nil {
+				return nil, err
+			}
 		}
+
 	}
 
-	memVir, memSwp := calculateMemory(totalVir, freeVir), calculateMemory(totalSwp, freeSwp)
+	memVir, memSwp := calculateMemory(totalVir, freeVir+buffers+cached+sReclaimable), calculateMemory(totalSwp, freeSwp)
+	memVir.Free = freeVir
 	return &Memory{Virtual: *memVir, Swap: *memSwp, Buffers: buffers, Cached: cached}, nil
 }
 
 func ProcessesAboveWatermark(cpuWatermark float64) ([]*Process, error) {
 	file, _ := os.ReadFile("/proc/uptime")
 	contents := strings.Fields(string(file))
-	uptimeSecs, _ := strconv.ParseUint(contents[0], 10, 64)
-	uptime := uptimeSecs * clkTck
+	var _, _ = fmt.Printf("Contents are: %v\n", contents)
+
+	uptimeSecs, _ := strconv.ParseFloat(contents[0], 64)
+	uptime := uint64(uptimeSecs * float64(clkTck))
+	var _, _ = fmt.Printf("Uptime seconds is: %f\n", uptimeSecs)
+	var _, _ = fmt.Printf("Uptime is: %d\n", uptime)
 
 	mem, err := MemoryInfo()
 	if err != nil {
@@ -137,22 +162,32 @@ func ProcessesAboveWatermark(cpuWatermark float64) ([]*Process, error) {
 
 		statFile := fmt.Sprintf("/proc/%d/stat", pid)
 		stats, err := os.ReadFile(statFile)
-		statFields := strings.Fields(string(stats))
+		statRaw := string(stats)
+		parenEnd := bytes.IndexByte(stats, ')')
+		statFields := strings.Fields(string(stats[parenEnd+1:]))
 
-		utime, _ := strconv.ParseUint(statFields[14], 10, 64)
-		stime, _ := strconv.ParseUint(statFields[15], 10, 64)
-		blkiotime, _ := strconv.ParseUint(statFields[48], 10, 64)
+		var _, _ = fmt.Printf("For pid: %d\n", pid)
+		var _, _ = fmt.Printf("Raw stat file is: %v\n", statRaw)
+		var _, _ = fmt.Printf("Contents of statFields is: %v\n", statFields)
+		utime, _ := strconv.ParseUint(statFields[11], 10, 64)
+		var _, _ = fmt.Printf("Found user time to be: %d\n", utime)
+		stime, _ := strconv.ParseUint(statFields[12], 10, 64)
+		var _, _ = fmt.Printf("Found scheduled time to be: %d\n", stime)
+		blkiotime, _ := strconv.ParseUint(statFields[39], 10, 64)
+		var _, _ = fmt.Printf("Found block time to be: %d\n", blkiotime)
 
 		active := utime + stime + blkiotime
 
-		start, _ := strconv.ParseUint(statFields[22], 10, 64)
+		start, _ := strconv.ParseUint(statFields[19], 10, 64)
 
 		total := uptime - start
+		var _, _ = fmt.Printf("Total time is: %d\n", total)
+
 		pctCPU := float64(active) / float64(total) * 100.0
 
-		if pctCPU > cpuWatermark {
-			continue
-		}
+		// if pctCPU < cpuWatermark {
+		// continue
+		// }
 
 		commandFile := fmt.Sprintf("/proc/%d/cmdline", pid)
 		command, err := os.ReadFile(commandFile)
@@ -173,13 +208,13 @@ func ProcessesAboveWatermark(cpuWatermark float64) ([]*Process, error) {
 		var rss, vsz, data, stack, locked, swap int
 		for lines.Scan() {
 			line := lines.Text()
-			fields := strings.FieldsFunc(line, fieldSplit)
+			fields := strings.FieldsFunc(line, statusFileFieldSplit)
 
 			switch fields[0] {
 			case "Name":
 				name = fields[1]
 			case "State":
-				state = fields[1]
+				state = fields[2]
 			case "VmRSS":
 				rss, err = strconv.Atoi(fields[1])
 				if err != nil {
